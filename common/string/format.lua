@@ -29,20 +29,28 @@ string.format =(function(format)
             argslist[_arglist_idx]=v
             _arglist_idx=_arglist_idx+1
         end
-        function _recallargs(str)
-            local start = recall_start
+        function _checkBeforeCount(str,idx,start)
+            local count=0
+            for n=idx-1,start,-1 do
+                if(str:sub(n,n)=="%") then
+                    count=count+1
+                else
+                    n=start
+                end
+            end
+            return math.mod(count,2)==0
+        end
+
+       
+        function _recallargs(str,start)
             local recall_end = string.len(str)
             while(start <= recall_end) do
-                local idx=nil
-                if (start ==recall_start and string.sub(str,recall_start,recall_start)=="%") then
-                    idx = 1
-                end
-                if(idx ==nil) then
-                    idx = string.find(str,"[^%%]%%",start)
-                end  
-                if (idx) then
-                    _arglist_insert_item(args[fmt_idxorder])
-                    fmt_idxorder = fmt_idxorder+1
+                local idx= string.find(str,"%%[^%%]",start)
+                if(idx) then
+                    if (_checkBeforeCount(str,idx,start)) then
+                        _arglist_insert_item(args[fmt_idxorder])
+                        fmt_idxorder = fmt_idxorder+1
+                    end
                     start =  idx+1
                 else
                     start = recall_end+1
@@ -51,46 +59,41 @@ string.format =(function(format)
         end
 
         while(last<=string.len(fmt)) do
-            local strstart, strend,value_f,value_s,value_op
-            strstart = nil 
-            if (last==1) then
-                strstart, strend,value_f,value_op,value_s = string.find(fmt,"^%%{(%-?%d*)([%.:]-)(%w*)}",last)
-            end
-            if(strstart ==nil ) then
-                strstart, strend,value_f,value_op,value_s = string.find(fmt,"[^%%]%%{(%-?%d*)([%.:]-)(%w*)}",last)
-            end
-            if(strstart ~=nil ) then
-                if (string.sub(fmt,strstart,strstart)~="%") then
-                    strstart=strstart+1
-                end
-                local argidx = tonumber(value_f)
-                fmtstr = fmtstr .. string.sub(fmt,last,strstart-1)
-                _recallargs(fmtstr)
-                if(argidx>0) then
-                    fmtstr = fmtstr .. "%" 
-                    recall_start =  string.len(fmtstr)+2          
-                    local arg =args[argidx]                
-                    local val=nil
-                    if (arg) then
-                        local argidx2 = tonumber(value_s) or value_s
-                        if (string.len(argidx2)>0) then
-                            val = value_op=="." and arg[argidx2] or value_op==":" and arg[argidx2](arg) or nil
+            local strstart, strend,value_f,value_op,value_s = string.find(fmt,"%%{(%-?%d*)([%.:]-)(%w*)}",last)
+            if (strstart) then
+                if (_checkBeforeCount(fmt,last,strstart)) then
+                    local argidx = tonumber(value_f)
+                    fmtstr = fmtstr .. string.sub(fmt,last,strstart-1)
+                    _recallargs(fmtstr,recall_start)
+                    if(argidx>0) then
+                        fmtstr = fmtstr .. "%" 
+                        recall_start =  string.len(fmtstr)+2          
+                        local arg =args[argidx]                
+                        local val=nil
+                        if (arg) then
+                            local argidx2 = tonumber(value_s) or value_s
+                            if (string.len(argidx2)>0) then
+                                val = value_op=="." and arg[argidx2] or value_op==":" and arg[argidx2](arg) or nil
+                            else
+                                val = arg
+                            end
                         else
-                            val = arg
+                            val = nil
                         end
+                        _arglist_insert_item(val)
+                    elseif(argidx<0) then
+                        fmt_idxorder = -argidx
                     else
-                        val = nil
+                        -- equ to zero
                     end
-                    _arglist_insert_item(val)
-                elseif(argidx<0) then
-                    fmt_idxorder = -argidx
                 else
-
+                    fmtstr = fmtstr .. string.sub(fmt,last,strend)
+                    _recallargs(fmtstr,recall_start) 
                 end
                 last = strend+1
             else
                 fmtstr = fmtstr .. string.sub(fmt,last,string.len(fmt))
-                _recallargs(fmtstr) 
+                _recallargs(fmtstr,recall_start) 
                 last = string.len(fmt)+1
             end
         end
